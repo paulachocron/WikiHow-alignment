@@ -11,6 +11,7 @@ import numpy as np
 import itertools
 import json
 import time
+from evaluator import get_precision
 
 # verbose = 0
 # if remote:
@@ -144,11 +145,12 @@ class Agent():
 						return 0
 				else:
 					utterance = protocol.text[label]
-				
+					interaction.append(label)
+
 				connection.send(utterance)
 				if verbose:
 					print "Agent {} says {}".format(self.id, utterance)
-				interaction.append(utterance)
+				
 				conf = connection.recv()
 				if conf == 'failed':
 					return 0
@@ -161,6 +163,8 @@ class Agent():
 	
 				interpretation = self.choose_interpretation(protocol, unknown, interaction, received)
 				if interpretation == None and received != 'none':
+					if verbose:
+						print "Failed to interpret"
 					connection.send('failed')
 					return 0	
 				if verbose:
@@ -184,8 +188,6 @@ class Agent():
 
 	def choose_utterance(self, protocol, known, interaction):
 		poss = get_possibilities(protocol, interaction, known)
-		if verbose:
-			print "possibilities {}".format(poss)
 		if poss: 
 			# return the text
 			return random.choice(poss)
@@ -222,6 +224,40 @@ class Agent():
 
 		return max
 
+	# def best_comb(self, words, received):
+	# 	# use permutations : )
+	# 	# and maybe divide it by the lenght of long?
+
+	# 	if len(words)<len(received):
+	# 		short = words
+	# 		long = received
+
+	# 	else:
+	# 		short = received
+	# 		long = words
+
+	# 	best = None
+	# 	max = 0
+	# 	val = 0
+	# 	for w in words:
+
+	# 	for p in itertools.permutations(long, len(short)):
+	# 		value = 0
+	# 		for i in range(len(short)):
+	# 			if len(words)<len(received):
+	# 				local = short[i]
+	# 				foreign = p[i]
+	# 			else:
+	# 				local = p[i]
+	# 				foreign = short[i]
+	# 			if foreign in self.alignment and local in self.alignment[foreign]:
+	# 				value += self.alignment[foreign][local]
+	# 		if value >= max:
+	# 			max = value
+	# 			best = p
+
+	# 	return max
+
 
 	def best_match(self, protocol, possibilities, words):
 		
@@ -235,8 +271,8 @@ class Agent():
 			value0 = self.best_comb(protocol.text[id][0], words[0])
 			value1 = self.best_comb(protocol.text[id][1], words[1])
 			val = value0+value1
-			if verbose:
-				print val
+			# if verbose:
+			# 	print val
 
 			if val>=max:
 				max = val
@@ -258,10 +294,16 @@ class Agent():
 					self.alignment[w] = {}
 
 		possibilities = get_possibilities(protocol, interaction, restrict)
-		if verbose:
-			print "poss desde choose int {}".format(possibilities)
 
-		# update values
+		if verbose:
+			print "received {}".format(received)
+			print possibilities
+			# print "interpretation possibilities {}".format([(p, protocol.text[p]) for p in possibilities])
+			# print "interpretation possibilities 0 {}".format([(p, protocol.text[p], self.best_comb(protocol.text[p][0],received[0])) for p in possibilities])
+			# print "interpretation possibilities 1 {}".format([(p, protocol.text[p], self.best_comb(protocol.text[p][1],received[1])) for p in possibilities])
+			print "interpretation possibilities  {}".format([(p, protocol.text[p], self.best_comb(protocol.text[p][0],received[0])+ self.best_comb(protocol.text[p][1],received[1])) for p in possibilities])
+
+		# update values with rewards
 		for i in [0,1]:
 			for w in received[i]:
 				for pos in possibilities:
@@ -271,6 +313,13 @@ class Agent():
 							self.alignment[w][wo] += 1
 						else:
 							self.alignment[w][wo] = 1
+
+		# update with punishments
+		for w in received[i]:
+			for wo in self.alignment[w]:
+				if not [1 for pos in possibilities if wo in protocol.text[pos][0] or wo in protocol.text[pos][1]]:
+					self.alignment[w][wo] -= 2
+
 
 		# and now choose one
 		chosen = self.best_match(protocol, possibilities, received)
@@ -384,6 +433,16 @@ def find_alignment(prot_en, prot_es):
 	alg = [(sorted_en[i],sorted_es[i]) for i in range(len(sorted_en))]
 	return alg
 
+def best_maps(alignment):
+	res = []
+	for k in alignment.keys():
+		if alignment[k]:
+			highest = max(alignment[k].values())
+			max_keys = [kk for kk in alignment[k].keys() if alignment[k][kk]==highest]
+
+		res.append((k, max_keys, highest))
+
+	return res
 
 def experiment(inters, text, dependencies):
 	# create agents
@@ -394,7 +453,19 @@ def experiment(inters, text, dependencies):
 	# prot = 0
 
 	for h in range(inters):
-		prot = random.choice(range(100))
+		
+		# poss = list(range(50))
+		# poss.remove(16)
+		# poss.remove(43)
+		# poss.remove(45)
+		# poss.remove(48)
+		# poss.remove(46)
+		# poss.remove(47)
+		# poss.remove(24)
+		prot = random.choice(range(15))
+		# prot = 1
+		if verbose:
+			print "Protocol {}".format(prot)
 		# build protocols
 		prot_en = build_protocol(text[prot][0], dependencies[prot][0])
 		prot_es = build_protocol(text[prot][1], dependencies[prot][1])
@@ -422,10 +493,18 @@ def experiment(inters, text, dependencies):
 		start_interaction(a_en,a_es, prot_en, prot_es, k_en, k_es, pattern)
 
 	print "Alignment en"
-	print a_en.alignment
+	print len(best_maps(a_en.alignment))
+	print best_maps(a_en.alignment)
+
+	# print a_en.alignment
+	print ""
+	print "Precision: {}".format(get_precision(best_maps(a_en.alignment), 'en'))
 	print ""
 	print "Alignment es"
-	print a_es.alignment
+	print best_maps(a_es.alignment)
+	# print a_es.alignment
+	print ""
+	print "Precision: {}".format(get_precision(best_maps(a_es.alignment), 'es'))
 	print ""
 	print "------------------------------"
 	print ""
@@ -436,7 +515,7 @@ def experiment(inters, text, dependencies):
 def main(argv):
 
 	name = 'test'
-	inters = 60
+	inters = 60	
 	ver = 0
 
 	try:
