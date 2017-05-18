@@ -810,7 +810,7 @@ es st i712 Hierve el pollo hasta que esté cocido.
 es st i713 Saca una taza de caldo de pollo para usarlo después. 
 es st i714 Baja la temperatura a intensidad media, machacándolo ocasionalmente. 
 es st i715 Después de haber hecho el roux, añádelo lentamente en la olla de la sopa. Revuélvelo constantemente hasta que todo esté incorporado.
-es st i716 Pon el brócoli en el caldo de pollo. Deja que hierva, y añade agua si es necesario para mantener el caldo a un nivel apropiado, hasta que el brócoli esté blando como para poder hacerlo puré.
+es st i716 Pon el brócoli en el canldo de pollo. Deja que hierva, y añade agua si es necesario para mantener el caldo a un nivel apropiado, hasta que el brócoli esté blando como para poder hacerlo puré.
 es st i717 Pon la mantequilla o margarina y derrítela en una olla pequeña. Añade media taza de caldo de pollo en la margarina o mantequilla. Añade harina hasta que tengas un roux cremoso.
 es re i718 La mitad de un cubo de margarina o mantequilla
 es re i719 Cuatro tasas de crema espesa para batir
@@ -22222,7 +22222,7 @@ en co i15061 Piece of vanilla 3 inches/7.5cm long, or some vanilla essence/extra
 en co i15062 1 oz. (2 tbsp) of sugar
 en nc i15063 Stirring implement
 en nc i15064 Knife
-en co i15065 2 oz. (1/2 cup) of cornflour
+en co i15065 2 oz. (1/2 cup) of corn flour
 en co i15066 2 oz. (1/2 cup) of fine flour
 en nc i15067 Serving dish
 en co i15068 1 quart (4 cups) of milk
