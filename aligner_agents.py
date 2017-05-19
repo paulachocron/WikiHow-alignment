@@ -15,40 +15,6 @@ import time
 from evaluator import get_precision
 import threading
 
-# verbose = 0
-# if remote:
-# 	verbose = 0
-
-def softmax(x):
-	"""Compute softmax values for each sets of scores in x."""
-	return np.exp(x) / np.sum(np.exp(x), axis=0)
-
-# def start_interaction(agent1, agent2, prot1, prot2, k_1, k_2, pattern):
-# 	""" Starts interaction between two agents"""
-# 	first_conn, second_conn = Pipe()
-# 	queue = Queue()
-# 	result_1 = []
-# 	result_2 = []
-# 	a1 = Interlocutor(agent1, first_conn, queue, prot1, k_1, pattern)
-# 	a2 = Interlocutor(agent2, second_conn, queue, prot2, k_2, pattern)
-
-# 	a1.start()
-# 	a2.start()
-# 	a1.join()
-# 	a2.join()
-
-# 	while not queue.empty():
-# 		history = queue.get()
-# 		if agent1.id == history[0]: 
-# 			agent1.update_alignment(history)
-# 			# agent1.update_alignment(history[1], history[2], history[3], history[4], history[5])
-# 		elif agent2.id == history[0]:
-# 			agent2.update_alignment(history)
-# 			# agent2.update_alignment(history[1], history[2], history[3], history[4], history[5])
-			
-# 	a1.terminate()
-# 	a2.terminate()
-
 def runAg(agent, connection, protocol, known, pattern):
 	result = agent.interact(connection, protocol, known, pattern)
 	if verbose:
@@ -58,69 +24,46 @@ def runAg(agent, connection, protocol, known, pattern):
 def start_interaction(agent1, agent2, prot1, prot2, k_1, k_2, pattern):
 	""" Starts interaction between two agents"""
 	first_conn, second_conn = Pipe()
-	# queue = Queue()
 	result_1 = []
 	result_2 = []
 
+	# agents are two threads connected through a Pipe
 	a1 = threading.Thread(target=runAg, args=(agent1, first_conn, prot1, k_1, pattern))
 	a2 = threading.Thread(target=runAg, args=(agent2, second_conn, prot2, k_2, pattern))
 
 	a1.start()
 	a2.start()
 	a1.join()
-	a2.join()
-			
+	a2.join()			
 	# a1.terminate()
 	# a2.terminate()
 
-class Protocol():
 
-	def __init__(self, vocabulary, labels, deps):
-		self.vocabulary = vocabulary
+class Protocol():
+	""" A protocol is composed of a set of labels ids divided into st, co, nc, re
+		And two dictionaries: Dependencies and Text (the NL labels)
+	"""
+
+	def __init__(self, labels, text, deps):
+		self.labels = labels
 		self.dependencies = deps
-		self.text = labels
+		self.text = text
 
 	def get_labels(self):
-		return self.vocabulary[0]+self.vocabulary[1]+self.vocabulary[2]+self.vocabulary[3]
+		return self.labels[0]+self.labels[1]+self.labels[2]+self.labels[3]
 
 
-class Interlocutor(Process):
-	""" An interlocutor that relates a process with an agent"""
-	
-	def __init__(self, agent, connection, queue, protocol, known, pattern):
-		super(Interlocutor, self).__init__()
-		self.agent = agent
-		self.connection = connection
-		self.queue = queue
-		self.protocol = protocol
-		self.known = known
-		self.pattern = pattern
+	def is_possible(self, label, interaction):
+		""" A label is possible if it has not been said 
+			and its requirements are complete
+		"""
+		if not label in self.get_labels():
+			return False			
+		dependencies = self.dependencies[label]
+		return not [d for d in dependencies if not d in interaction]
 
-	def run(self):
-		result = self.agent.interact(self.connection, self.protocol, self.known, self.pattern)
-		if verbose:
-			print "outcome {}".format(result)
-		# this should also be an agent's method (something like "remember")
-		self.queue.put([self.agent.id, self.agent.alignment])
-		return
-
-# a protocol is dict : ids -> ((verbs, nouns), [ids]) which mean text, dependencies
-# and interaction is [ids]
-
-def is_possible(label, protocol, interaction):
-	if not label in protocol.get_labels():
-		return False
-			
-	dependencies = protocol.dependencies[label]
-	# print label 
-	# print dependencies
-	return not [d for d in dependencies if not d in interaction]
-
-def get_possibilities(protocol, interaction, restrict):
-	# print "labels {}".format(protocol.get_labels())
-	# print "restrict {}".format(restrict)
-	# print protocol.dependencies
-	return [l for l in restrict if not l in interaction and is_possible(l, protocol, interaction)]
+	def get_possibilities(self, interaction, restrict):
+		return [l for l in restrict if not l in interaction and self.is_possible(l, interaction)]
 
 
 class Agent():
@@ -135,20 +78,6 @@ class Agent():
 
 	def __repr__(self):
 		return str(self.id)
-
-	def initialize(self, word):
-		"""Get initial alignment"""
-		random.shuffle(self.vocabulary)
-		self.alignment[word] = {v : (1.0/(len(self.unknown))) for v in self.unknown}
-		return
-
-	def best_map(self, foreign):
-		maxVal = max(self.alignment[foreign].values())
-		if self.alignment[foreign].values().count(maxVal)>1:
-			return None
-		best = [v for v in self.vocabulary if self.alignment[foreign][v]==maxVal][0]
-		return best
-
 
 	def interact(self, connection, protocol, known, pattern):
 		"""Start an interaction with an agent"""
@@ -213,20 +142,17 @@ class Agent():
 		return 2
 
 
-	def update_alignment(self, history):
-		""" Updates the alignment after an interaction"""
-		self.alignment = history[1]
-
 	def choose_utterance(self, protocol, known, interaction):
-		poss = get_possibilities(protocol, interaction, known)
+		poss = protocol.get_possibilities(interaction, known)
 		if poss: 
 			# return the text
 			return random.choice(poss)
 		return None
 	
 	def best_comb(self, words, received):
-		# use permutations : )
-		# and maybe divide it by the lenght of long?
+		"""Computes the mapping degree of two sentences"""
+		# this uses permutations to select the one with best value
+		# it still could be better by using the size of the sentences
 
 		if len(words)<len(received):
 			short = words
@@ -253,10 +179,7 @@ class Agent():
 		# return total
 
 		max = 0
-		# print "long: {}".format(long)
-		# print "short: {}".format(short)
 		for p in itertools.permutations(list(long), len(short)):
-			# print "p: {}".format(p)
 			value = 0
 			for i in range(len(short)):
 				if len(words)<len(received):
@@ -265,16 +188,12 @@ class Agent():
 				else:
 					local = p[i]
 					foreign = short[i]
-
-				# print "foreign {}".format(foreign)
-				# print "local {}".format(local)
 				if foreign in self.alignment.keys() and local in self.alignment[foreign].keys():
 					value += self.alignment[foreign][local]
 			if value >= max:
 				max = value
 				best = p
 		if max<=0:
-			# print "max: {}".format(max)
 			best = None
 
 		val = False
@@ -283,69 +202,15 @@ class Agent():
 
 		return max, best, val
 
-	# def best_comb(self, words, received):
-	# 	# use permutations : )
-	# 	# and maybe divide it by the lenght of long?
-
-	# 	if len(words)<len(received):
-	# 		short = words
-	# 		long = received
-
-	# 	else:
-	# 		short = received
-	# 		long = words
-
-	# 	best = None
-	# 	max = 0
-	# 	val = 0
-	# 	for w in words:
-
-	# 	for p in itertools.permutations(long, len(short)):
-	# 		value = 0
-	# 		for i in range(len(short)):
-	# 			if len(words)<len(received):
-	# 				local = short[i]
-	# 				foreign = p[i]
-	# 			else:
-	# 				local = p[i]
-	# 				foreign = short[i]
-	# 			if foreign in self.alignment and local in self.alignment[foreign]:
-	# 				value += self.alignment[foreign][local]
-	# 		if value >= max:
-	# 			max = value
-	# 			best = p
-
-	# 	return max
-
-	def mapping_value(self, words, received):
-		# value0 = self.best_comb(words[0], received[0])
-		# value1 = self.best_comb(words[1], received[1])
-		# return value0+value1
-		return self.best_comb(words, received)
 
 	def best_match(self, protocol, possibilities, received):
-		
-		# values = {}
-
-		# best = None
-		# max = 0
-
-		# for id in possibilities:
-		# 	# find best match between words and protocol[i]
-		# 	value0 = self.best_comb(protocol.text[id][0], received[0])
-		# 	value1 = self.best_comb(protocol.text[id][1], received[1])
-		# 	val = value0+value1
-		# 	# if verbose:
-		# 	# 	print val
-
-		# 	if val>=max:
-		# 		max = val
-		# 		best = id
-
+		"""Get the mapping with greatest value for a received sentence 
+			It returns the id of the best map, the 
+		"""
 		if not possibilities:
 			return None, {}, {}
 
-		values = {pos: self.mapping_value(protocol.text[pos], received) for pos in possibilities}
+		values = {pos: self.best_comb(protocol.text[pos], received) for pos in possibilities}
 
 		best = max(possibilities, key=lambda x : values[x])
 		# sorted = sort(possibilities, key=lambda x : self.mapping_value(x, received))
@@ -358,19 +223,16 @@ class Agent():
 
 
 	def choose_interpretation(self, protocol, restrict, interaction, received):
-		# now received is a set of words
-		# there is no "mappings made" anymore, because life is not bijective
-		
-		# now: alignment[0] are the verbs, alignment[1] are the nouns. 
-
-		# for i in [0,1]:
-		# 	for w in received[i]:
+		"""Critical method!! This chooses the interpretation for a message
+			And performs the updates
+		"""
+		#received is a set of words
 		for i in [0]:
 			for w in received:
 				if not w in self.alignment.keys():
 					self.alignment[w] = {}
 
-		possibilities = get_possibilities(protocol, interaction, restrict)
+		possibilities = protocol.get_possibilities(interaction, restrict)
 		chosen, indval, values = self.best_match(protocol, possibilities, received)
 
 		if verbose:
@@ -378,23 +240,8 @@ class Agent():
 			print possibilities
 			print "interpretation possibilities {}".format([(p, protocol.text[p], values[p]) for p in possibilities])
 			
-			# print "interpretation possibilities {}".format([(p, protocol.text[p]) for p in possibilities])
-			# print "interpretation possibilities 0 {}".format([(p, protocol.text[p], self.best_comb(protocol.text[p][0],received[0])) for p in possibilities])
-			# print "interpretation possibilities 1 {}".format([(p, protocol.text[p], self.best_comb(protocol.text[p][1],received[1])) for p in possibilities])
-
 		# update values with rewards
-		# for i in [0,1]:
 		for i in [1]:
-			# for w in received[i]:
-			# 	for pos in possibilities:
-			# 		posT = protocol.text[pos]
-			# 		for wo in posT[i]:
-			# 			if wo in self.alignment[w]:
-			# 				self.alignment[w][wo] += 1
-			# 			else:
-			# 				self.alignment[w][wo] = 1
-			# for jr in range(len(received[i])):
-			# 	w = received[i][jr]
 			for jr in range(len(received)):
 				w = received[jr]
 				for pos in possibilities:
@@ -408,37 +255,18 @@ class Agent():
 						if wo in self.alignment[w]:
 							# self.alignment[w][wo] += 1
 							#self.alignment[w][wo] += (1.0+self.mapping_value(posT, received))/(absV+1)
-							self.alignment[w][wo] += 1.0 + (1.0*(ind+1))
-							# self.alignment[w][wo] += 1.0 + (1.0*(ind+1))/(absV+1)
+							# self.alignment[w][wo] += 1.0 + (1.0*(ind+1))
+							self.alignment[w][wo] += (1.0*(ind+1))/(absV+1)
 							# self.alignment[w][wo] += (1.0)/(absV+1)
 						else:
 							# self.alignment[w][wo] = 1
-							self.alignment[w][wo] = (1.0*(ind+1))
-							# self.alignment[w][wo] = (1.0*(ind+1))/(absV+1)
+							# self.alignment[w][wo] = (1.0*(ind+1))
+							self.alignment[w][wo] = (1.0*(ind+1))/(absV+1)
 							# self.alignment[w][wo] = 1.0/(absV+1)
 
 							#self.alignment[w][wo] = (1.0+self.mapping_value(posT, received))/(absV+1)
 						if verbose:
 							print "mapping {} {} + {}".format(w,wo,(1.0*(ind+1))/(absV+1))
-
-
-			# for pos in possibilities:
-			# 	best = values[pos][1]
-			# 	# if verbose:
-			# 	# 	print "best: {}".format(best)
-			# 	if best:
-			# 		if len(protocol.text[pos])>len(received):
-			# 			for i in range(len(received)):
-			# 				if received[i] in self.alignment.keys() and best[i] in self.alignment[received[i]]:
-			# 					self.alignment[received[i]][best[i]] += 0.5
-			# 					if verbose:
-			# 						print "mapping best {} {} + {}".format(received[i],best[i],0.5)
-			# 		else:
-			# 			for i in range(len(protocol.text[pos])):
-			# 				if best[i] in self.alignment.keys() and protocol.text[pos][i] in self.alignment[best[i]].keys():
-			# 					self.alignment[best[i]][protocol.text[pos][i]] += 0.5
-			# 					if verbose:	
-			# 						print "mapping best {} {} + {}".format(best[i],protocol.text[pos][i],0.5)
 
 		# update with punishments
 		for w in received:
@@ -449,14 +277,6 @@ class Agent():
 					if verbose:
 						print "mapping {} {} - {}".format(w,wo,1)
 
-		# for pos in possibilities:
-		# 	for wo in protocol.text[pos]:
-		# 		for w in self.alignment.keys():
-		# 			if (not w in received) and wo in self.alignment[w]:
-		# 				self.alignment[w][wo] -= 0.2
-		# 				if verbose:
-		# 					print "reverse mapping {} {} - {}".format(w,wo,1)
-
 		if verbose:
 			print "alignment"
 			print self.alignment 
@@ -466,43 +286,27 @@ class Agent():
 		return chosen
 
 
-def precision_recall(alignment,  reference):
-	if not alignment: 
-		return 0,0
-	else:
-		max_alg = {k : max(alignment[k].iteritems(), key=itemgetter(1))[0] for k in alignment.keys()}
-		correct = sum(1 for k in alignment.keys() if max_alg[k] == reference[k])
-		return (float(correct)/float(len(alignment.keys())), float(correct)/float(len(reference.keys())))
-
-
-def reverseAlg(alignment):
-	return {alignment[k] : k for k in alignment.keys()}
+############################## PROTOCOL BUILDING #####################################
 
 def build_protocol(ltext, ddep):
+	""" Build protocol from text and dependencies"""
 	protocol = {}
-	# if lang == 'en':
-	# 	labels = list[0]
-	# elif lang == 'es':
-	# 	labels = list[1]
-	# first the text
-	vocabulary = ([],[],[],[])
+
+	labels = ([],[],[],[])
 	for l in ltext:
 		if l[1] == 'st':
-			vocabulary[0].append(l[2])
+			labels[0].append(l[2])
 		elif l[1] == 'co':
-			vocabulary[1].append(l[2])
+			labels[1].append(l[2])
 		elif l[1] == 'nc':
-			vocabulary[2].append(l[2])		
+			labels[2].append(l[2])		
 		elif l[1] == 're':
-			vocabulary[3].append(l[2])
+			labels[3].append(l[2])
 
-	labels = {}
+	text = {}
 	for l in ltext:
 		nouns = [w for w in l[3][0][1] if len(w)>2]
-		labels[l[2]] = l[3][0][0]+nouns[: min(4, len(nouns))]
-		# print labels[l[2]]
-	# labels = {l[2] : [l[3][0][0], l[3][0][1][: min(4, len(l[3][0][1]))]] for l in ltext}
-	# print labels
+		text[l[2]] = l[3][0][0]+nouns[: min(4, len(nouns))]
 
 	dependencies = {}
 	for l in ltext:
@@ -511,37 +315,28 @@ def build_protocol(ltext, ddep):
 		else:
 			dependencies[l[2]] = []
 
-	protocol = Protocol(vocabulary, labels, dependencies)
+	protocol = Protocol(labels, text, dependencies)
 
 	return protocol
 
 def build_protocol_fl(ltext, ddep):
+	""" Build protocol from a freeling text and dependencies"""
 	protocol = {}
-	# if lang == 'en':
-	# 	labels = list[0]
-	# elif lang == 'es':
-	# 	labels = list[1]
-	# first the text
-	vocabulary = ([],[],[],[])
+	labels = ([],[],[],[])
 	for l in ltext:
 		if l[1] == 'st':
-			vocabulary[0].append(l[2])
+			labels[0].append(l[2])
 		elif l[1] == 'co':
-			vocabulary[1].append(l[2])
+			labels[1].append(l[2])
 		elif l[1] == 'nc':
-			vocabulary[2].append(l[2])		
+			labels[2].append(l[2])		
 		elif l[1] == 're':
-			vocabulary[3].append(l[2])
+			labels[3].append(l[2])
 
-	labels = {}
+	text = {}
 	for l in ltext:
 		words = [w[1] for w in l[3][0]]
-		# if l[3][0]:
-		# 	print l[3][0][0][1].encode('utf8')
-		labels[l[2]] = words[: min(5, len(words))]
-		# print labels[l[2]]
-	# labels = {l[2] : [l[3][0][0], l[3][0][1][: min(4, len(l[3][0][1]))]] for l in ltext}
-	# print labels
+		text[l[2]] = words[: min(5, len(words))]
 
 	dependencies = {}
 	for l in ltext:
@@ -550,11 +345,12 @@ def build_protocol_fl(ltext, ddep):
 		else:
 			dependencies[l[2]] = []
 
-	protocol = Protocol(vocabulary, labels, dependencies)
+	protocol = Protocol(labels, text, dependencies)
 
 	return protocol
 
 def read_dependencies():
+	"""Parse the dependencies file"""
 	with open('data/all_dependencies.txt') as f:
 	# with open('all_labels.txt's) as f:
 		content = f.readlines()
@@ -583,8 +379,12 @@ def read_dependencies():
 	return dependencies
 
 
+############################## ALIGNMENT METHODS #####################################
+
 def find_alignment(prot_en, prot_es):
-	# alignment is list of (en, es)
+	"""Method to find the true alignment 
+		between the st labels of two protocols
+	"""
 	en_dep = prot_en.dependencies
 	es_dep = prot_es.dependencies
 
@@ -595,9 +395,9 @@ def find_alignment(prot_en, prot_es):
 		prot = lan[0]
 		relevant = lan[1]
 		for d1 in prot.dependencies.keys():
-			if d1 in prot.vocabulary[0]:
+			if d1 in prot.labels[0]:
 				for d2 in prot.dependencies[d1]:
-					if d2 in prot.vocabulary[0]:
+					if d2 in prot.labels[0]:
 						relevant.append([d2,d1])
 
 	sorted_es = []
@@ -613,14 +413,13 @@ def find_alignment(prot_en, prot_es):
 			next = [p for p in relevant if sorted[-1]==p[0]][0]
 			sorted.append(next[1])
 
-	# now the alignment
 	alg = [(sorted_en[i],sorted_es[i]) for i in range(len(sorted_en))]
 	return alg
 
-def best_maps(alignment):
-	res = []
-	
 
+def best_maps(alignment):
+	"""Gets only the mappings with best value"""
+	res = []
 	for k in alignment.keys():
 		max_keys = []
 		highest = None
@@ -633,6 +432,7 @@ def best_maps(alignment):
 	return res
 
 def good_maps(alignment):
+	"""Gets only the mappings with value>0"""
 	res = []
 	for k in alignment.keys():
 		good = []
@@ -643,26 +443,31 @@ def good_maps(alignment):
 
 	return res
 
+
+def precision_recall(alignment,  reference):
+	if not alignment: 
+		return 0,0
+	else:
+		max_alg = {k : max(alignment[k].iteritems(), key=itemgetter(1))[0] for k in alignment.keys()}
+		correct = sum(1 for k in alignment.keys() if max_alg[k] == reference[k])
+		return (float(correct)/float(len(alignment.keys())), float(correct)/float(len(reference.keys())))
+
+
+def reverseAlg(alignment):
+	return {alignment[k] : k for k in alignment.keys()}
+
+
+############################## EXPERIMENT #####################################
+
 def experiment(inters, text, dependencies, name):
 	# create agents
 	a_es = Agent(0)
 	a_en = Agent(1)
 
-	# choose a protocol number
-	# prot = 0
 
 	for h in range(inters):
-		
-		# poss = list(range(50))
-		# poss.remove(16)
-		# poss.remove(43)
-		# poss.remove(45)
-		# poss.remove(48)
-		# poss.remove(46)
-		# poss.remove(47)
-		# poss.remove(24)
+		# choose a protocol 
 		prot = random.choice(range(650))
-		# prot = h
 		# print prot
 		# prot = 500
 		if verbose:
@@ -673,22 +478,22 @@ def experiment(inters, text, dependencies, name):
 
 		alg = find_alignment(prot_en, prot_es)
 
-		k_en = random.sample(prot_en.vocabulary[0], len(prot_en.vocabulary[0])/2)
-		k_es = [[p[1] for p in alg if p[0]==k][0] for k in prot_en.vocabulary[0] if not k in k_en]
+		k_en = random.sample(prot_en.labels[0], len(prot_en.labels[0])/2)
+		k_es = [[p[1] for p in alg if p[0]==k][0] for k in prot_en.labels[0] if not k in k_en]
 
-		if prot_en.vocabulary[3]==[] and prot_es.vocabulary[3]==[]:
+		if prot_en.labels[3]==[] and prot_es.labels[3]==[]:
 			w = random.choice([0,1])
-			k_en.extend(prot_en.vocabulary[w+1])
-			k_es.extend(prot_es.vocabulary[(1-w)+1])
+			k_en.extend(prot_en.labels[w+1])
+			k_es.extend(prot_es.labels[(1-w)+1])
 
 		else:
 			w = random.choice(['en', 'es'])
 			if w=='en':
-				k_en.extend(prot_en.vocabulary[1]+prot_en.vocabulary[2]+prot_en.vocabulary[3])
+				k_en.extend(prot_en.labels[1]+prot_en.labels[2]+prot_en.labels[3])
 			else:
-				k_es.extend(prot_es.vocabulary[1]+prot_es.vocabulary[2]+prot_es.vocabulary[3])
+				k_es.extend(prot_es.labels[1]+prot_es.labels[2]+prot_es.labels[3])
 
-		patterns = [[0,1] for p in range((len(prot_en.vocabulary[0])/2)+4)]
+		patterns = [[0,1] for p in range((len(prot_en.labels[0])/2)+4)]
 		pattern = [e for l in patterns for e in l]
 
 		start_interaction(a_en,a_es, prot_en, prot_es, k_en, k_es, pattern)
@@ -701,6 +506,7 @@ def experiment(inters, text, dependencies, name):
 		res_file.write(repr(best_maps(a_es.alignment)))
 	print len(a_en.alignment)
 	print len(a_es.alignment)
+
 	# print "Alignment en"
 	# print len(best_maps(a_en.alignment))
 	# print good_maps(a_en.alignment)
@@ -759,45 +565,6 @@ def main(argv):
 
 	experiment(inters, labels, read_dependencies(), 'test')
 
-	# protocol_file = open('../input/jsonALG-alg'+str(precision)+'-'+str(recall), 'w')
-
-	# protocol = 
-
-	# voc_es = ['i23','i29','i33','i34','i30','i32','i21','i36','i25','i27','i38','i37','i22','i31','i20','i28','i35','i24','i26','i39']
-
-	# voc_en = ['i16', 'i11','i13','i9','i19','i3','i8','i1','i4','i12','i0','i10','i6','i7','i14','i5','i2','i18','i17','i15']
-	# prot_es = {'i23' : ['i22'], 'i29': ['i28'], 'i30': ['i29'], 'i21': ['i20','i34','i32'], 'i25': ['i24'], 'i27': ['i26'], 'i22': ['i21','i31','i36','i38'], 'i20': ['i33','i35','i37','i39'], 'i28': ['i27'], 'i24': ['i23'], 'i26': ['i25']}
-
-	# prot_en = {'i9': ['i8'],'i3': ['i2'],'i8': ['i7'],'i1': ['i0','i14','i18'],'i4': ['i3'],'i0': ['i19', 'i12', 'i13', 'i17'],'i10': ['i9'],'i6': ['i5'],'i7': ['i6'],'i5': ['i4'],'i2': ['i1','i11', 'i15','i16']}
-
-	# alg_es_en = {'i16': 'i31', 'i11': 'i38', 'i13': 'i37', 'i9': 'i29', 'i19': 'i33', 'i3': 'i23', 'i8': 'i28', 'i1': 'i21', 'i4': 'i24', 'i12': 'i39', 'i0': 'i20', 'i10': 'i30', 'i6': 'i26', 'i7': 'i27', 'i14': 'i32', 'i5': 'i25', 'i2': 'i22', 'i18': 'i34', 'i17': 'i35', 'i15': 'i36'}
-	# alg_en_es = reverseAlg(alg_es_en)
-
-	# k_en = random.sample(voc_en, len(voc_es)/2)
-	# k_es = [alg_es_en[k] for k in voc_en if not k in k_en]
-
-	# alg_es = {k : alg_es_en[k] for k in alg_es_en.keys() if k not in k_es}
-	# alg_en = {k : alg_en_es[k] for k in alg_en_es.keys() if k not in k_en}
-
-	# a_es = Agent(0, voc_es, prot_es, k_es)
-	# a_en = Agent(1, voc_en, prot_en, k_en)
-
-
-	# patterns = [[0,1] for p in range((len(voc_es)/2)+4)]
-	# pattern = [e for l in patterns for e in l]
-
-	# for h in range(inters):
-	# 	print "\n Interaction {}".format(h)
-	# 	start_interaction(a_en,a_es, prot_en, prot_es, k_en, k_es pattern)
-	# 	# print "Result: {}".format(a1.results[-1])
-	# 	print "Precision, recall es: {}".format(precision_recall(a_es.alignment, alg_es_en))
-	# 	print "Precision, recall en: {}".format(precision_recall(a_en.alignment, alg_en_es))
-
-	# print "spanish"
-	# print a_es.alignment
-
-	# print "english"
-	# print a_en.alignment
 
 global verbose 
 verbose = 0
