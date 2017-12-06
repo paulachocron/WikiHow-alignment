@@ -1,22 +1,16 @@
 # -*- coding: utf-8 -*-
 import re
-import nltk
 import unicodedata
 from io import open
-# from nltk.internals import find_jars_within_path
-from nltk.tag.stanford import POSTagger
 from subprocess import call
 import json
-import os
-import requests
 import freeling
-
 
 def get_labels():
     protocols_en = []
     protocols_es = []
 
-    with open('oxford_translation/data/all_labels_de_duplicated.txt', encoding='utf-8') as f:
+    with open('data/all_labels_de_duplicated.txt', encoding='utf-8') as f:
     # with open('all_labels.txt's) as f:
         content = f.readlines()
         f.close()
@@ -43,14 +37,16 @@ def get_labels():
             jpair = 1 - jpair
             # labels_store[iprot] = []
         elif not l.startswith("#"):
+
             words = l.split()
+            # print l
             language_tag = words[0]
             type_tag = words[1]
             label_id = words[2]
             label = ' '.join(words[3:])
 
             ### this gets only the first sentence
-            label = clean_label(label)
+            label = clean_label(label, language_tag)
             sentences = label.split('.')
             sentence = sentences[0]
 
@@ -170,49 +166,18 @@ def process_labels_testing():
     tk_en, sp_en, sid_en, mf_en, tg_en = build_freeling('en')
 
             
-    label = "A pinch of asafoetida and a crab apple"
-    language_tag = 'en'
+    label = "Mantequilla"
+    language_tag = 'es'
     type_tag = 'up'
-
-
+    
+    label = clean_label(label, language_tag)
     if language_tag == 'es':
         label_pr = parse_label(language_tag,type_tag,label, tk_es, sp_es, sid_es, mf_es, tg_es)
     if language_tag == 'en':
         label_pr = parse_label(language_tag,type_tag,label, tk_en, sp_en, sid_en, mf_en, tg_en)
     print label
     print label_pr
-                # print "label before processing {}".format(label_pr)            
-    #             labels_store[iprot][jpair].append((language_tag, type_tag, label_id, label_pr))
-
-    # return labels_store
-
-    #         label = re.sub(r'\,|\:', '', label)
-    #         label = re.sub(r'\-', '_', label)
-    #         sentences = label.split('.') 
-
-    #         if language_tag == 'es':
-    #             for s in sentences:
-    #                 lzd = lemmatizer(s,tk_es, sp_es, sid_es, mf_es)
-    #                 concepts = get_concepts(language_tag,lzd)
-    #                 concepts_es.extend(concepts)
-                            
-    #                 with open('data/locutions_es.json', 'a') as outfile:
-    #                     for c in concepts:
-    #                         outfile.write(unicode(json.dumps(c, ensure_ascii=False)))
-    #                         outfile.write(u"\u000d")
-
-    #         if language_tag == 'en' :
-    #             for s in sentences:
-    #                 lzd = lemmatizer(s,tk_en, sp_en, sid_en, mf_en)
-    #                 concepts = get_concepts(language_tag,lzd)
-    #                 concepts_en.extend(concepts)
-
-    #                 with open('data/locutions_en.json', 'a') as outfile:
-    #                     for c in concepts:
-    #                         outfile.write(unicode(json.dumps(c, ensure_ascii=False)))
-    #                         outfile.write(u"\u000d")
-
-    # return concepts_en, concepts_es
+    return label_pr
 
 
 def lemmatizer():
@@ -259,41 +224,54 @@ def lemmatizer():
 
     return labels_store
 
-    # lf = mf.analyze(spd)
-    # lf = tg.analyze(lf)
-       
-    #     words = []
-        
-    #     for w in lf:
-    #         for ws in w.get_words():
-    #             # print ws.get_form() + " " + ws.get_lemma() + " " + ws.get_tag()
-    #             if language_tag=='es':
-    #                 if ws.get_tag()[:4] =='VMIP'or ws.get_tag()[0]=='N':
-    #                     words.append([ws.get_form(),ws.get_lemma().replace('_',' '), ws.get_tag()])
-    #             elif language_tag=='en':
-    #                 if ws.get_tag()=='VB' or ws.get_tag()=='VBP' or ws.get_tag()[0]=='N':
-    #                     words.append([ws.get_form(),ws.get_lemma().replace('_',' '), ws.get_tag()])
 
-def clean_label(label):
+def clean_label(label, language_tag='en'):
     #remove parenthesis
-    label = re.sub(r'\([^)]*\)', '', label)
+    label = label.lower()
+    label = re.sub(r'[0-9]([.,][0-9])?', ' ', label)
+    label = re.sub(r'[.,][0-9]', ' ', label)
+    label = re.sub(r'[0-9]([x][0-9])?', ' ', label)
+
+    # label = re.sub(r'\([^)]*\)', '', label)
+    label = re.sub(r'\)', ' ', label)
+    label = re.sub(r'\(', ' ', label)
     # remove numbers
-    label = re.sub(r'([#199;&#209;])+', '', label)
+    # label = re.sub(r'([#199;&#209;])+', '', label)
     # remove most common measures
-    # label = re.sub(r' (oz(\.)?|cm(\.)?| fl(\.)?|g\.|ml(\.)?)', '', label)
+    if language_tag=='en':
+        centim = ' centimeters '
+        milil = ' mililiters '
+        lib = ' pounds '
+        grm = ' grams '
+        ounc = ' ounces '
+
+    else:
+        centim = ' centimetros '
+        milil = ' mililitros '
+        lib = ' libras '
+        grm = ' gramos '
+        ounc = ' onzas '
+
     label = re.sub(r'tbsp(\.)?|tbs(\.)?', ' tablespoon ', label)
     label = re.sub(r'tsp(\.)?', ' teaspoon ', label)
-    label = re.sub(r' oz(\.)?', ' ounces ', label)
-    label = re.sub(r' cm(\.)?|cm\.', ' centimeters ', label)
-    label = re.sub(r' g\.| gr\.| grs.| g ', ' grams ', label)
-    label = re.sub(r'ml(\.)?', ' mililiters ', label)
-    label = re.sub(r' lb(\.)?|lb\.', ' pounds ', label)
+    label = re.sub(r' oz(\.)?', ounc, label)
+
+    label = re.sub(r' cm(\.)?|cm\.', centim, label)
+    label = re.sub(r' approx(\.)?', ' approximately ', label)
+    label = re.sub(r' g(\.)? | gr(\.)? | grs(\.)? ', grm, label)
+    label = re.sub(r' ml(\.)?', milil, label)
+    label = re.sub(r' lb(\.)?|lb\.', lib, label)
     label = re.sub(r' qt(\.)?|qt\.', ' quarter ', label)
     label = re.sub(r'e\.g\.|ej\.|/', '', label)
-    label = re.sub(r'\ºC|\ºc|\ºF|\ºf', '', label)
+    label = re.sub(r'ºC|ºc|ºF|ºf', '', label)
     label = re.sub(r'\xba,C|\xba,c|\xba,F|\xba,f', '', label)
-    label = re.sub(r'cdts(\.)?|cdt(\.)?', 'cucharadita', label)
-    label = re.sub(r'\º', '', label)
+    label = re.sub(r'cdts(\.)?|cdtas(\.)?|cdta(\.)?|cdt(\.)?', ' cucharaditas ', label)
+    label = re.sub(r'cdas(\.)?|cda(\.)?', ' cucharadas ', label)
+    label = re.sub(r'\'re', ' are', label)
+    label = re.sub(r'º', '', label)
+    label = re.sub(r'-', ' ', label)
+
+
     # label.replace('\xba,', '')
     # label = re.sub(r' g ', 'grams', label)
     label = ''.join([i for i in label if not i.isdigit()])
@@ -301,7 +279,41 @@ def clean_label(label):
     # label = ''.join(c for c in unicodedata.normalize('NFD', label) if unicodedata.category(c) != 'Mn')
     # unicodedata.normalize('NFKD', label).encode('ascii','ignore')
     label = label.lower()
+    # print "clean label {}".format(label)
     # label2 = label.encode('ascii','ignore')
+    return label
+
+
+def clean_label_dots(label):
+    #remove parenthesis
+    label = label.lower()
+
+    label = re.sub(r'[.,][0-9]', ',5', label)
+    # remove most common measures
+    # label = re.sub(r' (oz(\.)?|cm(\.)?| fl(\.)?|g\.|ml(\.)?)', '', label)
+    label = re.sub(r'tbsp(\.)?|tbs(\.)?|cdas(\.)', ' tablespoon ', label)
+    label = re.sub(r'tsp(\.)?', ' teaspoon ', label)
+    label = re.sub(r' oz(\.)?', ' ounces ', label)
+    label = re.sub(r' cm(\.)?|cm\.', ' centimeters ', label)
+    label = re.sub(r' g\.| gr\.| grs.| g ', ' grams ', label)
+    label = re.sub(r' ml(\.)?', ' mililiters ', label)
+    label = re.sub(r' lb(\.)?|lb\.', ' pounds ', label)
+    label = re.sub(r' qt(\.)?|qt\.', ' quarter ', label)
+    label = re.sub(r'e\.g\.|ej\.|/', '', label)
+    label = re.sub(r' approx(\.)?', ' approximately ', label)
+    # label = re.sub(r'ºC|ºc|ºF|ºf', '', label)
+    label = re.sub(r'\xba,C|\xba,c|\xba,F|\xba,f', '', label)
+    label = re.sub(r'cdts(\.)?|cdtas(\.)?|cdta(\.)?|cdt(\.)?', 'cucharadita', label)
+    label = re.sub(r'cdts(\.)?|cdt(\.)?|cdtas(\.)?|cdta(\.)?', 'cucharadita', label)
+    label = re.sub(r'cdas(\.)?|cda(\.)?', 'cucharada', label)
+    label = re.sub(r'\'re', ' are', label)
+    label = re.sub(r'º', '', label)
+    label = re.sub(r'-', ' ', label)
+
+
+    # label.replace('\xba,', '')
+    # label = re.sub(r' g ', 'grams', label)
+    
     return label
 
 
@@ -326,52 +338,52 @@ def parse_label(language_tag,type_tag,label, tk, sp, sid, mf, tg):
         
         for w in lf:
             for ws in w.get_words():
-                # print ws.get_form() + " " + ws.get_lemma() + " " + ws.get_tag()
-                # print ""
-                # if ws.get_form()=='vaporera':
-                #      words.append([ws.get_form(),'vaporera', 'NN'])
 
-                ##### PREV
-                # if language_tag=='es':
-                #     if ws.get_tag()[:4] =='VMIP' or ws.get_tag()[:3] == 'VMN' or ws.get_tag()[0]=='N':
-                #         words.append([ws.get_form(),ws.get_lemma().replace('_',' '), ws.get_tag()])
-                # elif language_tag=='en':
-                #     if ws.get_tag()=='VB' or ws.get_tag()=='VBP' or ws.get_tag()[0]=='N':
-                #         words.append([ws.get_form(),ws.get_lemma().replace('_',' '), ws.get_tag()])
+                if len(ws.get_form())>2 and not u'º' in ws.get_form():
 
-                ##### NEW
-                if language_tag=='es':
-                    if ws.get_tag()[0] =='V' or ws.get_tag()[0] == 'A' or ws.get_tag()[0]=='N' or ws.get_tag()[0]=='R':
-                        words.append([ws.get_form(),ws.get_lemma().replace('_',' '), ws.get_tag()])
-                elif language_tag=='en':
-                    if ws.get_tag()[0]=='V' or ws.get_tag()[0]=='J' or ws.get_tag()[0]=='N' or ws.get_tag()[0]=='R':
-                        words.append([ws.get_form(),ws.get_lemma().replace('_',' '), ws.get_tag()])
+                    if language_tag=='es':
+                        if ws.get_tag()[0] =='V' or ws.get_tag()[0] == 'A' or ws.get_tag()[0]=='N' or ws.get_tag()[0]=='R':
+                            words.append([ws.get_form(),ws.get_lemma().replace('_',' '), ws.get_tag()])
+                        # elif ws.get_tag()=='Zp':
+                        #      words.append([ws.get_form().replace('_',' '),ws.get_form().replace('_',' '), ws.get_tag()])
+                    elif language_tag=='en':
+                        if ws.get_tag()[0]=='V' or ws.get_tag()[0]=='J' or ws.get_tag()[0]=='N' or ws.get_tag()[0]=='R':
+                            words.append([ws.get_form(),ws.get_lemma().replace('_',' '), ws.get_tag()])
+                        # elif ws.get_tag()=='Zp':
+                        #      words.append([ws.get_form().replace('_',' '),ws.get_form().split('_')[-1], ws.get_tag()])
 
         for w in words:
             if w[0] == 'cupcakes':
                 w[1] = 'cupcake' 
+            if w[0] == 'pancita':
+                w[1] = 'panza' 
             if w[0] == 'milimeters':
                 w[1] = 'milimeter'            
             if w[0] == 'muffins':
                 w[1] = 'muffin'
+            if w[0] == 'doritos':
+                w[1] = 'dorito'
             if w[0] == 'brownies':
                 w[1] = 'brownie'
+            if w[1] == 'bayo':
+                w[1] = 'baya'
             if w[0] == 'vegana' or w[0] == 'veganos' or w[0] == 'veganas':
-                w[1] = 'vegano' 
+                w[1] = 'vegano'
+            if w[0] == 'nata' or w[0] == 'burrito' or w[0] == 'easter' or w[0] == 'boba' or w[0]=='ramito' or w[0]=='helado' or w[0]=='granada' or w[0]=='chalota':
+                w[1] = w[0]
+            if w[0][:7] == 'apropiad':
+                w[1] = 'apropiado'
+            if w[1] == 'vas':
+                w[1] = 'vaso'
+            if w[1] == 'morar':
+                w[1] = 'morado'
+            if w[0][:3] == 'mix':
+                w[1] = 'mix'
+            if any(d.isdigit() for d in w[1]):
+                w[1] = w[0]
+
         sentences_res.append(words)
 
     return sentences_res
-
-# store = process_labels_testing()
-# print store
-# store = lemmatizer()
-# print store
-
-store = process_labels()
-with open('data/clean-labels-freeling-dedup.json', 'w+') as outfile:
-    outfile.write(unicode(json.dumps(store, ensure_ascii=False)))
-
-# concepts_en, concepts_es = process_labels()
-# print store
 
 
